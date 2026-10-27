@@ -124,6 +124,22 @@ public class App {
                 .replace("\n", "\\n");
     }
 
+    static String termToHtml(Term term) {
+        String html = "<li><strong>" + term.getWord() + "とは？</strong>";
+        html += "<details><summary>答えを見る</summary><p>";
+        html += term.getMeaning();
+        html += "</p><h3>試験のポイント</h3><p>";
+        html += term.getExamPoint();
+        html += "</p></details>";
+        html += term.isMemorized() ? " ✔ " : " ";
+        html += "<a href='/memorized?id=" + term.getId() + "&memorized=";
+        html += !term.isMemorized() + "'>";
+        html += term.isMemorized() ? "復習する" : "覚えた";
+        html += "</a> ";
+        html += "<a href='/delete?id=" + term.getId() + "'>削除</a></li>";
+        return html;
+    }
+
     public static void main(String[] args) throws Exception {
         HttpServer server = HttpServer.create(new InetSocketAddress(8080), 0);
         createTable();
@@ -182,20 +198,31 @@ public class App {
                 html += "<label>用語</label><input name='word'>";
                 html += "<label>意味</label><input name='meaning'>";
                 html += "<label>試験のポイント</label><input name='examPoint'>";
-                html += "<button>用語を追加</button></form><ul>";
-                for (Term term : selectTerms()) {
-                    html += "<li><strong>" + term.getWord() + "とは？</strong>";
-                    html += "<details><summary>答えを見る</summary><p>";
-                    html += term.getMeaning();
-                    html += "</p><h3>試験のポイント</h3><p>";
-                    html += term.getExamPoint();
-                    html += "</p></details>";
-                    html += term.isMemorized() ? " ✔ " : " ";
-                    html += "<a href='/memorized?id=" + term.getId() + "&memorized="
-                            + !term.isMemorized() + "'>" + (term.isMemorized() ? "復習する" : "覚えた") + "</a> ";
-                    html += "<a href='/delete?id=" + term.getId() + "'>削除</a></li>";
+                html += "<button>用語を追加</button></form>";
+
+                List<Term> terms = selectTerms();
+                html += "<h2>復習する用語</h2><ul>";
+                for (Term term : terms) {
+                    if (!term.isMemorized()) {
+                        html += termToHtml(term);
+                    }
                 }
-                html += "</ul></body></html>";
+                html += "</ul>";
+
+                int memorizedCount = 0;
+                for (Term term : terms) {
+                    if (term.isMemorized()) {
+                        memorizedCount++;
+                    }
+                }
+
+                html += "<details><summary>覚えた用語（" + memorizedCount + "件）</summary><ul>";
+                for (Term term : terms) {
+                    if (term.isMemorized()) {
+                        html += termToHtml(term);
+                    }
+                }
+                html += "</ul></details></body></html>";
                 byte[] response = html.getBytes(StandardCharsets.UTF_8);
                 exchange.getResponseHeaders().set("Content-Type", "text/html; charset=UTF-8");
                 exchange.sendResponseHeaders(200, response.length);
