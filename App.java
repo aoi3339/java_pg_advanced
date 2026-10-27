@@ -16,12 +16,14 @@ class Term {
     private final int id;
     private final String word;
     private final String meaning;
+    private final String examPoint;
     private boolean memorized;
 
-    Term(int id, String word, String meaning) {
+    Term(int id, String word, String meaning, String examPoint) {
         this.id = id;
         this.word = word;
         this.meaning = meaning;
+        this.examPoint = examPoint;
         this.memorized = false;
     }
 
@@ -35,6 +37,10 @@ class Term {
 
     String getMeaning() {
         return meaning;
+    }
+
+    String getExamPoint() {
+        return examPoint;
     }
 
     boolean isMemorized() {
@@ -54,6 +60,7 @@ public class App {
                 + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
                 + "word TEXT NOT NULL, "
                 + "meaning TEXT NOT NULL, "
+                + "exam_point TEXT NOT NULL DEFAULT '', "
                 + "memorized INTEGER NOT NULL DEFAULT 0)";
 
         try (Connection connection = DriverManager.getConnection(DB_URL);
@@ -62,13 +69,14 @@ public class App {
         }
     }
 
-    static void insertTerm(String word, String meaning) throws IOException {
-        String sql = "INSERT INTO terms (word, meaning, memorized) VALUES (?, ?, ?)";
+    static void insertTerm(String word, String meaning, String examPoint) throws IOException {
+        String sql = "INSERT INTO terms (word, meaning, exam_point, memorized) VALUES (?, ?, ?, ?)";
         try (Connection connection = DriverManager.getConnection(DB_URL);
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, word);
             statement.setString(2, meaning);
-            statement.setInt(3, 0);
+            statement.setString(3, examPoint);
+            statement.setInt(4, 0);
             statement.executeUpdate();
         } catch (SQLException e) {
             throw new IOException(e);
@@ -87,9 +95,20 @@ public class App {
         }
     }
 
+    static void deleteTerm(int id) throws IOException {
+        String sql = "DELETE FROM terms WHERE id = ?";
+        try (Connection connection = DriverManager.getConnection(DB_URL);
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, id);
+            statement.executeUpdate();
+        } catch (SQLException e) {
+            throw new IOException(e);
+        }
+    }
+
     static List<Term> selectTerms() throws IOException {
         List<Term> terms = new ArrayList<>();
-        String sql = "SELECT id, word, meaning, memorized FROM terms ORDER BY id";
+        String sql = "SELECT id, word, meaning, exam_point, memorized FROM terms ORDER BY id";
 
         try (Connection connection = DriverManager.getConnection(DB_URL);
              PreparedStatement statement = connection.prepareStatement(sql);
@@ -98,7 +117,8 @@ public class App {
                 Term term = new Term(
                         results.getInt("id"),
                         results.getString("word"),
-                        results.getString("meaning")
+                        results.getString("meaning"),
+                        results.getString("exam_point")
                 );
                 term.setMemorized(results.getInt("memorized") == 1);
                 terms.add(term);
@@ -120,6 +140,8 @@ public class App {
             json.append(escapeJson(term.getWord()));
             json.append("\",\"meaning\":\"");
             json.append(escapeJson(term.getMeaning()));
+            json.append("\",\"examPoint\":\"");
+            json.append(escapeJson(term.getExamPoint()));
             json.append("\",\"memorized\":");
             json.append(term.isMemorized());
             json.append("}");
@@ -141,6 +163,29 @@ public class App {
                 .replace("\"", "&quot;");
     }
 
+    static String termToHtml(Term term) {
+        String html = "<article>";
+        html += "<h2>" + escapeHtml(term.getWord()) + "とは？</h2>";
+        html += "<details><summary>答えを見る</summary><p>";
+        html += escapeHtml(term.getMeaning());
+        html += "</p><h3>試験のポイント</h3><p>";
+        html += escapeHtml(term.getExamPoint());
+        html += "</p></details>";
+
+        if (term.isMemorized()) {
+            html += "<p>状態：覚えた</p>";
+            html += "<a href='/memorized?id=" + term.getId()
+                    + "&memorized=false'>復習するに戻す</a>";
+        } else {
+            html += "<p>状態：復習する</p>";
+            html += "<a href='/memorized?id=" + term.getId()
+                    + "&memorized=true'>覚えた</a>";
+        }
+        html += "　<a href='/delete?id=" + term.getId() + "'>削除</a>";
+        html += "</article>";
+        return html;
+    }
+
     public static void main(String[] args) throws Exception {
         HttpServer server = HttpServer.create(new InetSocketAddress(8080), 0);
         createTable();
@@ -157,17 +202,20 @@ public class App {
 
                 String word = "";
                 String meaning = "";
+                String examPoint = "";
                 String[] values = body.split("&");
                 for (String value : values) {
                     if (value.startsWith("word=")) {
                         word = URLDecoder.decode(value.substring(5), StandardCharsets.UTF_8);
                     } else if (value.startsWith("meaning=")) {
                         meaning = URLDecoder.decode(value.substring(8), StandardCharsets.UTF_8);
+                    } else if (value.startsWith("examPoint=")) {
+                        examPoint = URLDecoder.decode(value.substring(10), StandardCharsets.UTF_8);
                     }
                 }
 
-                if (!word.isEmpty() && !meaning.isEmpty()) {
-                    insertTerm(word, meaning);
+                if (!word.isEmpty() && !meaning.isEmpty() && !examPoint.isEmpty()) {
+                    insertTerm(word, meaning, examPoint);
                 }
                 exchange.getResponseHeaders().set("Location", "/");
                 exchange.sendResponseHeaders(303, -1);
@@ -189,6 +237,18 @@ public class App {
                 return;
             }
 
+            if (path.equals("/delete") && method.equals("GET")) {
+                String query = exchange.getRequestURI().getQuery();
+                if (query != null && query.startsWith("id=")) {
+                    int id = Integer.parseInt(query.substring(3));
+                    deleteTerm(id);
+                }
+                exchange.getResponseHeaders().set("Location", "/");
+                exchange.sendResponseHeaders(303, -1);
+                exchange.close();
+                return;
+            }
+
             if (path.equals("/")) {
                 List<Term> terms = selectTerms();
                 String html = "<html><head><meta charset='UTF-8'>";
@@ -202,31 +262,42 @@ public class App {
                 html += "article{background:#ffffff;border-left:6px solid #14b8a6;padding:15px;margin:15px 0;border-radius:8px;}";
                 html += "summary{color:#0369a1;font-weight:bold;cursor:pointer;}";
                 html += "a{color:#0f766e;font-weight:bold;}";
+                html += ".learned-list{margin-top:30px;padding:15px;background:#dcebea;border-radius:8px;}";
                 html += "</style></head><body>";
                 html += "<h1>セキュマネ用語帳</h1>";
                 html += "<form method='post' action='/add'>";
                 html += "<label>用語</label><input name='word' required>";
                 html += "<label>意味</label><textarea name='meaning' required></textarea>";
+                html += "<label>試験のポイント</label><textarea name='examPoint' required></textarea>";
                 html += "<button>登録</button></form>";
 
+                html += "<h2>復習する用語</h2>";
+                int reviewCount = 0;
                 for (Term term : terms) {
-                    html += "<article>";
-                    html += "<h2>" + escapeHtml(term.getWord()) + "とは？</h2>";
-                    html += "<details><summary>答えを見る</summary><p>";
-                    html += escapeHtml(term.getMeaning());
-                    html += "</p></details>";
-
-                    if (term.isMemorized()) {
-                        html += "<p>状態：覚えた</p>";
-                        html += "<a href='/memorized?id=" + term.getId()
-                                + "&memorized=false'>復習するに戻す</a>";
-                    } else {
-                        html += "<p>状態：復習する</p>";
-                        html += "<a href='/memorized?id=" + term.getId()
-                                + "&memorized=true'>覚えた</a>";
+                    if (!term.isMemorized()) {
+                        html += termToHtml(term);
+                        reviewCount++;
                     }
-                    html += "</article>";
                 }
+                if (reviewCount == 0) {
+                    html += "<p>復習する用語はありません。</p>";
+                }
+
+                int learnedCount = 0;
+                for (Term term : terms) {
+                    if (term.isMemorized()) {
+                        learnedCount++;
+                    }
+                }
+
+                html += "<details class='learned-list'><summary>覚えた用語（";
+                html += learnedCount + "件）</summary>";
+                for (Term term : terms) {
+                    if (term.isMemorized()) {
+                        html += termToHtml(term);
+                    }
+                }
+                html += "</details>";
 
                 html += "</body></html>";
                 byte[] response = html.getBytes(StandardCharsets.UTF_8);
