@@ -3,8 +3,12 @@ import java.io.IOException; // 追加：ファイルの読み書きで起きる�
 import java.net.InetSocketAddress; // 待ち受けるポート番号を指定できるようにします。
 import java.net.URLDecoder; // 追加：送られた日本語を元に戻せるようにします。
 import java.nio.charset.StandardCharsets; // 追加：UTF-8という文字コード（文字の読み取り方式）を使えるようにします。
-import java.nio.file.Files; // 追加：ファイルを読み書きできるようにします。
-import java.nio.file.Path; // 追加：todos.csvの場所を表せるようにします。
+import java.sql.Connection; // ★変更：SQLiteとの接続を扱えるようにします。
+import java.sql.DriverManager; // ★変更：SQLiteへ接続できるようにします。
+import java.sql.PreparedStatement; // ★変更：値を安全にSQLへ渡せるようにします。
+import java.sql.ResultSet; // ★変更：SELECTの検索結果を読めるようにします。
+import java.sql.SQLException; // ★変更：データベースのエラーを扱えるようにします。
+import java.sql.Statement; // ★変更：表を作るSQLを実行できるようにします。
 import java.util.ArrayList; // 追加：Todoを入れるリストを作れるようにします。
 import java.util.List; // 追加：Todoを入れるリストの型（データの種類）を使えるようにします。
 
@@ -37,46 +41,71 @@ class Todo { // ★変更：Todo（やること1件分）のクラスを定義�
 }
 
 public class App { // Appという名前のクラス（プログラムのまとまり）を定義します。
-    static List<Todo> todos = new ArrayList<>(); // ★変更：Todoをためるリストをmainの外に置きます。
-    static int nextId = 1; // ★変更：次に振る番号を1から始めます。
+    static final String DB_URL = "jdbc:sqlite:todos.db"; // ★変更：SQLiteデータベースの接続先を指定します。
 
-    static void save() throws IOException { // 追加：現在のTodo全件をtodos.csvへ保存します。
-        List<String> lines = new ArrayList<>(); // 追加：ファイルへ書く行を入れるリストを用意します。
-        for (Todo todo : todos) { // 追加：Todoを1件ずつ取り出します。
-            String title = todo.getTitle().replace("\r", " ").replace("\n", " "); // 追加：1件を必ず1行で保存できるよう改行を空白にします。
-            String done = todo.isDone() ? "1" : "0"; // 追加：完了なら1、未完了なら0にします。
-            lines.add(todo.getId() + "," + done + "," + title); // 追加：id、完了状態、タイトルの順で1行を作ります。
-        } // 追加：全Todoを保存用の行にする処理を終えます。
-        Files.write(Path.of("todos.csv"), lines, StandardCharsets.UTF_8); // 追加：全件をUTF-8でtodos.csvへ書き出します。
-    } // 追加：保存の処理を終えます。
+    static void createTable() throws SQLException { // ★変更：Todoを保存する表を用意します。
+        String sql = "CREATE TABLE IF NOT EXISTS todos (id INTEGER PRIMARY KEY, title TEXT, done INTEGER)"; // ★変更：必要な列を持つtodos表の定義です。
+        try (Connection connection = DriverManager.getConnection(DB_URL); // ★変更：todos.dbへ接続します。
+             Statement statement = connection.createStatement()) { // ★変更：SQLを実行する準備をします。
+            statement.executeUpdate(sql); // ★変更：todos表が無い場合だけ作成します。
+        } // ★変更：接続とStatementを自動で閉じます。
+    } // ★変更：表を用意する処理を終えます。
 
-    static void load() throws IOException { // 追加：todos.csvからTodo全件を読み込みます。
-        Path path = Path.of("todos.csv"); // 追加：読み込むtodos.csvの場所を用意します。
-        if (!Files.exists(path)) { // 追加：todos.csvが無いか確かめます。
-            return; // 追加：ファイルが無ければ空のまま読み込みを終えます。
-        } // 追加：ファイルの有無を確かめる処理を終えます。
-        todos.clear(); // 追加：ファイルの内容を正本にするため現在のリストを空にします。
-        int maxId = 0; // 追加：読み込んだ中で一番大きいidを覚える変数を用意します。
-        for (String line : Files.readAllLines(path, StandardCharsets.UTF_8)) { // 追加：UTF-8で読み込んだ行を1行ずつ処理します。
-            String[] values = line.split(",", 3); // 追加：1行をid、完了状態、タイトルの3つに分けます。
-            if (values.length != 3) { // 追加：3つの値がそろっているか確かめます。
-                continue; // 追加：形式が違う行は読み飛ばします。
-            } // 追加：値の数を確かめる処理を終えます。
-            try { // 追加：idを数字として読み込めるか試します。
-                int id = Integer.parseInt(values[0]); // 追加：先頭の値をidに戻します。
-                Todo todo = new Todo(id, values[2]); // 追加：読み込んだidとタイトルでTodoを戻します。
-                todo.setDone(values[1].equals("1")); // 追加：完了状態が1なら完了済みに戻します。
-                todos.add(todo); // 追加：戻したTodoをリストへ入れます。
-                maxId = Math.max(maxId, id); // 追加：一番大きいidを更新します。
-            } catch (NumberFormatException e) { // 追加：idが数字でない行を受け止めます。
-            } // 追加：idが数字でない行は読み飛ばします。
-        } // 追加：全行を読み込む処理を終えます。
-        nextId = maxId + 1; // 追加：次の番号を一番大きいidの次にします。
-    } // 追加：読み込みの処理を終えます。
+    static void insertTodo(String title) throws IOException { // ★変更：Todoを1件追加します。
+        String sql = "INSERT INTO todos (title, done) VALUES (?, ?)"; // ★変更：追加用のSQLを用意します。
+        try (Connection connection = DriverManager.getConnection(DB_URL); // ★変更：todos.dbへ接続します。
+             PreparedStatement statement = connection.prepareStatement(sql)) { // ★変更：INSERTを安全に実行する準備をします。
+            statement.setString(1, title); // ★変更：1つ目の?へタイトルを入れます。
+            statement.setInt(2, 0); // ★変更：2つ目の?へ未完了を表す0を入れます。
+            statement.executeUpdate(); // ★変更：INSERTを実行します。
+        } catch (SQLException e) { // ★変更：追加時のデータベースエラーを受け止めます。
+            throw new IOException(e); // ★変更：HTTP処理で扱えるエラーとして渡します。
+        } // ★変更：追加時のエラー処理を終えます。
+    } // ★変更：追加処理を終えます。
+
+    static void completeTodo(int id) throws IOException { // ★変更：指定されたTodoを完了にします。
+        String sql = "UPDATE todos SET done = ? WHERE id = ?"; // ★変更：完了状態を更新するSQLを用意します。
+        try (Connection connection = DriverManager.getConnection(DB_URL); // ★変更：todos.dbへ接続します。
+             PreparedStatement statement = connection.prepareStatement(sql)) { // ★変更：UPDATEを安全に実行する準備をします。
+            statement.setInt(1, 1); // ★変更：1つ目の?へ完了を表す1を入れます。
+            statement.setInt(2, id); // ★変更：2つ目の?へ対象のidを入れます。
+            statement.executeUpdate(); // ★変更：UPDATEを実行します。
+        } catch (SQLException e) { // ★変更：更新時のデータベースエラーを受け止めます。
+            throw new IOException(e); // ★変更：HTTP処理で扱えるエラーとして渡します。
+        } // ★変更：更新時のエラー処理を終えます。
+    } // ★変更：完了処理を終えます。
+
+    static void deleteTodo(int id) throws IOException { // ★変更：指定されたTodoを削除します。
+        String sql = "DELETE FROM todos WHERE id = ?"; // ★変更：削除用のSQLを用意します。
+        try (Connection connection = DriverManager.getConnection(DB_URL); // ★変更：todos.dbへ接続します。
+             PreparedStatement statement = connection.prepareStatement(sql)) { // ★変更：DELETEを安全に実行する準備をします。
+            statement.setInt(1, id); // ★変更：?へ削除するTodoのidを入れます。
+            statement.executeUpdate(); // ★変更：DELETEを実行します。
+        } catch (SQLException e) { // ★変更：削除時のデータベースエラーを受け止めます。
+            throw new IOException(e); // ★変更：HTTP処理で扱えるエラーとして渡します。
+        } // ★変更：削除時のエラー処理を終えます。
+    } // ★変更：削除処理を終えます。
+
+    static List<Todo> selectTodos() throws IOException { // ★変更：todos表から全Todoを読み出します。
+        List<Todo> todos = new ArrayList<>(); // ★変更：検索結果を入れるリストを用意します。
+        String sql = "SELECT id, title, done FROM todos ORDER BY id"; // ★変更：id順で全件を読むSQLを用意します。
+        try (Connection connection = DriverManager.getConnection(DB_URL); // ★変更：todos.dbへ接続します。
+             PreparedStatement statement = connection.prepareStatement(sql); // ★変更：SELECTを実行する準備をします。
+             ResultSet results = statement.executeQuery()) { // ★変更：SELECTを実行して検索結果を受け取ります。
+            while (results.next()) { // ★変更：検索結果を1件ずつ取り出します。
+                Todo todo = new Todo(results.getInt("id"), results.getString("title")); // ★変更：idとtitleからTodoを作ります。
+                todo.setDone(results.getInt("done") == 1); // ★変更：doneが1なら完了済みにします。
+                todos.add(todo); // ★変更：読み出したTodoを一覧へ加えます。
+            } // ★変更：検索結果を読む処理を終えます。
+        } catch (SQLException e) { // ★変更：検索時のデータベースエラーを受け止めます。
+            throw new IOException(e); // ★変更：HTTP処理で扱えるエラーとして渡します。
+        } // ★変更：検索時のエラー処理を終えます。
+        return todos; // ★変更：データベースから読み出したTodo一覧を返します。
+    } // ★変更：一覧取得処理を終えます。
 
     public static void main(String[] args) throws Exception { // プログラムが最初に実行する場所を定義します。
         HttpServer server = HttpServer.create(new InetSocketAddress(8080), 0); // 8080番ポートで待ち受けるサーバーを用意します。
-        load(); // 追加：サーバーを動かす前にtodos.csvからTodo全件を読み込みます。
+        createTable(); // ★変更：サーバーを動かす前にtodos表を用意します。
         server.createContext("/", exchange -> { // 「/」へのアクセスを処理します。
             String path = exchange.getRequestURI().getPath(); // アクセスされたパスを取り出します。
             String method = exchange.getRequestMethod(); // 追加：GETかPOSTかという送信方法を取り出します。
@@ -87,9 +116,7 @@ public class App { // Appという名前のクラス（プログラムのまと�
                 String value = body.substring(5); // 追加：「todo=」の5文字を除きます。
                 String title = URLDecoder.decode(value, StandardCharsets.UTF_8); // ★変更：日本語に戻した文字をtitleに入れます。
                 if (!title.isEmpty()) { // ★変更：titleが空ではないか確かめます。
-                    todos.add(new Todo(nextId, title)); // ★変更：次の番号とtitleでTodoを作り、リストに足します。
-                    nextId++; // ★変更：次に振る番号を1つ増やします。
-                    save(); // 追加：Todoを追加した直後に全件を保存します。
+                    insertTodo(title); // ★変更：PreparedStatementのINSERTでTodoを追加します。
                 } // 追加：空の入力を除く処理を終えます。
                 exchange.getResponseHeaders().set("Location", "/"); // 追加：戻る場所を「/」に指定します。
                 exchange.sendResponseHeaders(303, -1); // 追加：303で「/」へ移動するよう返します。
@@ -100,13 +127,7 @@ public class App { // Appという名前のクラス（プログラムのまと�
                 if (query != null && query.startsWith("id=") && query.length() > 3) { // ★追加：idが付いているか確かめます。
                     try { // ★追加：数字に変えられるか試します。
                         int id = Integer.parseInt(query.substring(3)); // ★追加：idの文字を数に変えます。
-                        for (Todo todo : todos) { // ★追加：Todoを1件ずつ確認します。
-                            if (todo.getId() == id) { // ★追加：idが一致するか確かめます。
-                                todo.setDone(true); // ★追加：一致したTodoを完了にします。
-                                save(); // 追加：Todoを完了にした直後に全件を保存します。
-                                break; // ★追加：一致したので繰り返しを抜けます。
-                            } // ★追加：idが一致したときの処理を終えます。
-                        } // ★追加：Todoを1件ずつ見る処理を終えます。
+                        completeTodo(id); // ★変更：PreparedStatementのUPDATEでTodoを完了にします。
                     } catch (NumberFormatException e) { // ★追加：idが数字でない場合を受け止めます。
                     } // ★追加：数字でない場合は何も変えません。
                 } // ★追加：idの確認を終えます。
@@ -118,10 +139,7 @@ public class App { // Appという名前のクラス（プログラムのまと�
                 if (query != null && query.startsWith("id=") && query.length() > 3) { // ★追加：idが付いているか確かめます。
                     try { // ★追加：数字に変えられるか試します。
                         int id = Integer.parseInt(query.substring(3)); // ★追加：idの文字を数に変えます。
-                        boolean removed = todos.removeIf(todo -> todo.getId() == id); // 変更：Todoを取り除き、リストが変わったか覚えます。
-                        if (removed) { // 追加：Todoが実際に削除されたか確かめます。
-                            save(); // 追加：Todoを削除した直後に全件を保存します。
-                        } // 追加：削除後に保存する処理を終えます。
+                        deleteTodo(id); // ★変更：PreparedStatementのDELETEでTodoを削除します。
                     } catch (NumberFormatException e) { // ★追加：idが数字でない場合を受け止めます。
                     } // ★追加：数字でない場合は何も変えません。
                 } // ★追加：idの確認を終えます。
@@ -129,6 +147,7 @@ public class App { // Appという名前のクラス（プログラムのまと�
                 exchange.sendResponseHeaders(303, -1); // ★追加：303で「/」へ移動するよう返します。
                 return; // ★追加：削除の処理を終えます。
             } else if (path.equals("/")) { // 追加：「/」なら入力フォームとTodo一覧を表示します。
+                List<Todo> todos = selectTodos(); // ★変更：PreparedStatementのSELECTで表示するTodoを読み出します。
                 String html = "<html><head><meta charset='UTF-8'><style>body { max-width: 700px; margin: 40px auto; padding: 0 20px; font-size: 18px; }</style></head><body>"; // ★変更：幅・余白・文字サイズだけを整えます。
                 html += "<h1>今日のTodoリスト</h1>"; // ★変更：ページの見出しを表示します。
                 html += "<form method='post' action='/add'><input name='todo'><button>追加</button></form>"; // ★変更：入力フォームを表示します。
