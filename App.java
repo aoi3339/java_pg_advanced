@@ -228,7 +228,7 @@ public class App {
                 if (query != null) {
                     String[] values = query.split("&");
                     int id = Integer.parseInt(values[0].substring(3));
-                    boolean memorized = Boolean.parseBoolean(values[1].substring(11));
+                    boolean memorized = Boolean.parseBoolean(values[1].substring(10));
                     updateMemorized(id, memorized);
                 }
                 exchange.getResponseHeaders().set("Location", "/");
