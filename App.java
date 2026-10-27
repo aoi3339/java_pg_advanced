@@ -193,10 +193,10 @@ public class App { // Appという名前のクラス（プログラムのまと�
             } else if (path.equals("/")) { // 追加：「/」なら入力フォームとTodo一覧を表示します。
                 List<Todo> todos = selectTodos(); // ★変更：PreparedStatementのSELECTで表示するTodoを読み出します。
                 String html = "<html><head><meta charset='UTF-8'><style>body { max-width: 700px; margin: 40px auto; padding: 0 20px; font-size: 18px; }</style></head><body>"; // ★変更：幅・余白・文字サイズだけを整えます。
-                html += "<h1>今日のTodoリスト</h1>"; // ★変更：ページの見出しを表示します。
-                html += "<form method='post' action='/add'><input name='todo'><button>追加</button></form>"; // ★変更：入力フォームを表示します。
+                html += "<h1>セキュマネ用語リスト</h1>"; // ページの見出しを用語学習向けに変えます。
+                html += "<form method='post' action='/add'><input name='todo' placeholder='覚えたい用語'><button>用語を追加</button></form>"; // 入力フォームを用語学習向けに変えます。
                 if (todos.isEmpty()) { // ★変更：Todoが0件か確かめます。
-                    html += "<p>やることは、いまゼロです</p>"; // ★変更：0件のときの文を表示します。
+                    html += "<p>登録された用語はありません</p>"; // 0件のときの文を用語学習向けに変えます。
                 }
                 html += "<ul>"; // ★変更：HTMLの箇条書きを始めます。
                 for (Todo todo : todos) { // ★変更：Todoを1件ずつ取り出します。
@@ -206,7 +206,7 @@ public class App { // Appという名前のクラス（プログラムのまと�
                         mark = " <span style='color: red;'>✔</span>"; // ★追加：終わったTodoの印を赤文字にします。
                         titleStyle = " style='color: lightblue;'"; // ★追加：終わったTodoの文字を薄い水色にします。
                     } // ★追加：終わったTodoの見た目を決める処理を終えます。
-                    html += "<li><span" + titleStyle + ">" + todo.getTitle() + "</span>" + mark + " <a href='/done?id=" + todo.getId() + "'>完了</a> <a href='/delete?id=" + todo.getId() + "'>削除</a></li>"; // ★追加：Todoの文字色、印、完了と削除のリンクを表示します。
+                    html += "<li><span" + titleStyle + ">" + todo.getTitle() + "</span>" + mark + " <a href='/done?id=" + todo.getId() + "'>覚えた</a> <a href='/delete?id=" + todo.getId() + "'>削除</a></li>"; // 完了を「覚えた」に置き換えます。
                 } // 追加：繰り返しを終えます。
                 html += "</ul></body></html>"; // ★変更：HTMLの箇条書きとページを閉じます。
                 message = html; // 追加：組み立てたHTMLを返す内容にします。
