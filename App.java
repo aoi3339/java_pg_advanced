@@ -172,7 +172,10 @@ public class App {
                 html += "<label>意味</label><input name='meaning'>";
                 html += "<button>用語を追加</button></form><ul>";
                 for (Term term : selectTerms()) {
-                    html += "<li><strong>" + term.getWord() + "</strong>：" + term.getMeaning();
+                    html += "<li><strong>" + term.getWord() + "とは？</strong>";
+                    html += "<details><summary>答えを見る</summary><p>";
+                    html += term.getMeaning();
+                    html += "</p></details>";
                     html += term.isMemorized() ? " ✔ " : " ";
                     html += "<a href='/memorized?id=" + term.getId() + "&memorized="
                             + !term.isMemorized() + "'>" + (term.isMemorized() ? "復習する" : "覚えた") + "</a> ";
