@@ -157,10 +157,19 @@ public class App { // Appという名前のクラス（プログラムのまと�
             exchange.getResponseHeaders().set("Content-Type", "text/plain; charset=UTF-8"); // 移動：通常は文字をUTF-8のプレーンテキスト（飾りのない文字）として返します。
             if (path.equals("/add") && method.equals("POST")) { // 追加：/addへPOSTで送られたか確かめます。
                 String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8); // 追加：送られた中身をUTF-8で受け取ります。
-                String value = body.substring(5); // 追加：「todo=」の5文字を除きます。
-                String title = URLDecoder.decode(value, StandardCharsets.UTF_8); // ★変更：日本語に戻した文字をtitleに入れます。
-                if (!title.isEmpty()) { // ★変更：titleが空ではないか確かめます。
-                    insertTodo(title); // ★変更：PreparedStatementのINSERTでTodoを追加します。
+                String word = "";
+                String meaning = "";
+                String[] values = body.split("&");
+                for (String value : values) {
+                    if (value.startsWith("word=")) {
+                        word = URLDecoder.decode(value.substring(5), StandardCharsets.UTF_8);
+                    } else if (value.startsWith("meaning=")) {
+                        meaning = URLDecoder.decode(value.substring(8), StandardCharsets.UTF_8);
+                    }
+                }
+                if (!word.isEmpty() && !meaning.isEmpty()) {
+                    String title = word + "：" + meaning;
+                    insertTodo(title); // 用語と意味を一つの文字列として既存のtitleへ保存します。
                 } // 追加：空の入力を除く処理を終えます。
                 exchange.getResponseHeaders().set("Location", "/"); // 追加：戻る場所を「/」に指定します。
                 exchange.sendResponseHeaders(303, -1); // 追加：303で「/」へ移動するよう返します。
@@ -194,7 +203,10 @@ public class App { // Appという名前のクラス（プログラムのまと�
                 List<Todo> todos = selectTodos(); // ★変更：PreparedStatementのSELECTで表示するTodoを読み出します。
                 String html = "<html><head><meta charset='UTF-8'><style>body { max-width: 700px; margin: 40px auto; padding: 0 20px; font-size: 18px; }</style></head><body>"; // ★変更：幅・余白・文字サイズだけを整えます。
                 html += "<h1>セキュマネ用語リスト</h1>"; // ページの見出しを用語学習向けに変えます。
-                html += "<form method='post' action='/add'><input name='todo' placeholder='覚えたい用語'><button>用語を追加</button></form>"; // 入力フォームを用語学習向けに変えます。
+                html += "<form method='post' action='/add'>";
+                html += "<label>用語</label><input name='word' placeholder='覚えたい用語'>";
+                html += "<label>意味</label><input name='meaning' placeholder='用語の意味'>";
+                html += "<button>用語を追加</button></form>"; // 用語と意味の入力欄を表示します。
                 if (todos.isEmpty()) { // ★変更：Todoが0件か確かめます。
                     html += "<p>登録された用語はありません</p>"; // 0件のときの文を用語学習向けに変えます。
                 }
