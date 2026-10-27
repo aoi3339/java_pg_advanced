@@ -103,6 +103,50 @@ public class App { // Appという名前のクラス（プログラムのまと�
         return todos; // ★変更：データベースから読み出したTodo一覧を返します。
     } // ★変更：一覧取得処理を終えます。
 
+    static String todosToJson(List<Todo> todos) { // Todo一覧をJSON配列へ変換します。
+        StringBuilder json = new StringBuilder("["); // JSON配列の開始記号を追加します。
+        for (int i = 0; i < todos.size(); i++) { // 全Todoを先頭から順番に処理します。
+            Todo todo = todos.get(i); // 現在処理するTodoを取得します。
+            if (i > 0) { // 2件目以降か確認します。
+                json.append(","); // Todo同士を区切るカンマを追加します。
+            } // カンマが必要かの確認を終えます。
+            json.append("{\"title\":\""); // titleプロパティの開始部分を追加します。
+            json.append(escapeJson(todo.getTitle())); // エスケープしたタイトルを追加します。
+            json.append("\",\"done\":"); // doneプロパティの開始部分を追加します。
+            json.append(todo.isDone()); // 完了状態をtrueまたはfalseで追加します。
+            json.append("}"); // Todoオブジェクトの終了記号を追加します。
+        } // 全Todoの変換を終えます。
+        json.append("]"); // JSON配列の終了記号を追加します。
+        return json.toString(); // 完成したJSON文字列を返します。
+    } // Todo一覧をJSONへ変換する処理を終えます。
+
+    static String escapeJson(String value) { // 文字列をJSON用にエスケープします。
+        if (value == null) { // 文字列がnullか確認します。
+            return ""; // nullの場合は空文字列として返します。
+        } // nullの確認を終えます。
+        StringBuilder escaped = new StringBuilder(); // エスケープ後の文字列を組み立てます。
+        for (int i = 0; i < value.length(); i++) { // 元の文字列を1文字ずつ処理します。
+            char character = value.charAt(i); // 現在処理する文字を取得します。
+            switch (character) { // 特別な処理が必要な文字を判定します。
+                case '"' -> escaped.append("\\\""); // ダブルクォートをエスケープします。
+                case '\\' -> escaped.append("\\\\"); // バックスラッシュをエスケープします。
+                case '\n' -> escaped.append("\\n"); // 改行をエスケープします。
+                case '\r' -> escaped.append("\\r"); // 復帰文字をエスケープします。
+                case '\t' -> escaped.append("\\t"); // タブをエスケープします。
+                case '\b' -> escaped.append("\\b"); // バックスペースをエスケープします。
+                case '\f' -> escaped.append("\\f"); // フォームフィードをエスケープします。
+                default -> { // それ以外の文字を処理します。
+                    if (character < 0x20) { // JSONに直接書けない制御文字か確認します。
+                        escaped.append(String.format("\\u%04x", (int) character)); // 制御文字をUnicode表記へ変換します。
+                    } else { // 通常の文字の場合を処理します。
+                        escaped.append(character); // 文字をそのまま追加します。
+                    } // 制御文字かどうかの確認を終えます。
+                } // 通常文字と制御文字の処理を終えます。
+            } // 1文字分の判定を終えます。
+        } // 全文字のエスケープを終えます。
+        return escaped.toString(); // 完成したエスケープ済み文字列を返します。
+    } // JSON用のエスケープ処理を終えます。
+
     public static void main(String[] args) throws Exception { // プログラムが最初に実行する場所を定義します。
         HttpServer server = HttpServer.create(new InetSocketAddress(8080), 0); // 8080番ポートで待ち受けるサーバーを用意します。
         createTable(); // ★変更：サーバーを動かす前にtodos表を用意します。
@@ -175,6 +219,19 @@ public class App { // Appという名前のクラス（プログラムのまと�
             exchange.getResponseBody().write(body); // 本文のデータをブラウザへ送ります。
             exchange.getResponseBody().close(); // 送信を終えて本文を閉じます。
         }); // 「/」への処理の登録を終えます。
+        server.createContext("/api/todos", exchange -> { // Todo一覧APIの入口を登録します。
+            if (!exchange.getRequestMethod().equals("GET")) { // GET以外のリクエストか確認します。
+                exchange.sendResponseHeaders(405, -1); // GET以外には405 Method Not Allowedを返します。
+                exchange.close(); // 通信を終了します。
+                return; // 以降の処理を行わず終了します。
+            } // リクエスト方式の確認を終えます。
+            String json = todosToJson(selectTodos()); // データベースの全TodoをJSONへ変換します。
+            byte[] body = json.getBytes(StandardCharsets.UTF_8); // JSONをUTF-8のバイト列へ変換します。
+            exchange.getResponseHeaders().set("Content-Type", "application/json"); // charsetなしのJSON形式を指定します。
+            exchange.sendResponseHeaders(200, body.length); // 成功を表す200とデータサイズを返します。
+            exchange.getResponseBody().write(body); // JSONをレスポンス本文へ書き込みます。
+            exchange.getResponseBody().close(); // レスポンス本文を閉じて送信を完了します。
+        }); // Todo一覧APIの登録を終えます。
         server.start(); // サーバーの待ち受けを始めます。
         System.out.println("サーバー起動: http://localhost:8080 （止めるときは Ctrl+C）"); // 起動したことと止め方を表示します。
     } // mainの処理を終えます。
