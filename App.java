@@ -3,6 +3,8 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -335,6 +337,38 @@ public class App {
         }
     }
 
+    static void insertTermsFromFile(String fileName) throws IOException {
+        String existsSql = "SELECT 1 FROM terms WHERE word = ? LIMIT 1";
+        String insertSql = "INSERT INTO terms (word, meaning, exam_point, category, importance, learning_order, related_terms, memorized) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?, 0)";
+        List<String> lines = Files.readAllLines(Path.of(fileName), StandardCharsets.UTF_8);
+        try (Connection connection = DriverManager.getConnection(DB_URL);
+             PreparedStatement exists = connection.prepareStatement(existsSql);
+             PreparedStatement insert = connection.prepareStatement(insertSql)) {
+            for (String line : lines) {
+                if (line.isBlank() || line.startsWith("#")) continue;
+                String[] values = line.split("\t", -1);
+                if (values.length != 7) {
+                    throw new IOException(fileName + " のデータ形式が正しくありません: " + line);
+                }
+                exists.setString(1, values[0]);
+                try (ResultSet result = exists.executeQuery()) {
+                    if (result.next()) continue;
+                }
+                insert.setString(1, values[0]);
+                insert.setString(2, values[1]);
+                insert.setString(3, values[2]);
+                insert.setString(4, values[3]);
+                insert.setInt(5, Integer.parseInt(values[4]));
+                insert.setInt(6, Integer.parseInt(values[5]));
+                insert.setString(7, values[6]);
+                insert.executeUpdate();
+            }
+        } catch (SQLException | NumberFormatException e) {
+            throw new IOException(e);
+        }
+    }
+
     static void updateMemorized(int id, boolean memorized) throws IOException {
         String sql = "UPDATE terms SET memorized = ? WHERE id = ?";
         try (Connection connection = DriverManager.getConnection(DB_URL);
@@ -396,6 +430,17 @@ public class App {
             throw new IOException(e);
         }
         return terms;
+    }
+
+    static int nextLearningOrder() throws IOException {
+        String sql = "SELECT COALESCE(MAX(learning_order), 0) + 1 FROM terms";
+        try (Connection connection = DriverManager.getConnection(DB_URL);
+             PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet result = statement.executeQuery()) {
+            return result.next() ? result.getInt(1) : 1;
+        } catch (SQLException e) {
+            throw new IOException(e);
+        }
     }
 
     static String termsToJson(List<Term> terms) {
@@ -548,6 +593,7 @@ public class App {
         insertAdditionalTerms();
         insertStudyTerms();
         applyLearningData();
+        insertTermsFromFile("terms_seed.tsv");
 
         server.createContext("/", exchange -> {
             String path = exchange.getRequestURI().getPath();
@@ -626,7 +672,8 @@ public class App {
                 html += "<meta name='viewport' content='width=device-width,initial-scale=1'>";
                 html += "<title>" + escapeHtml(term.getWord()) + " - セキュマネ用語帳</title>" + pageStyles();
                 html += "</head><body><main class='page'><header class='hero'><h1>関連用語</h1>";
-                html += "<p><a class='action edit' href='/'>← おすすめ学習順へ戻る</a></p></header>";
+                html += "<p><a class='action edit' href='/' onclick='history.back(); return false;'>← 前のページに戻る</a> ";
+                html += "<a class='action primary' href='/'>おすすめ学習順へ戻る</a></p></header>";
                 html += "<ul class='term-list'>" + termToHtml(term, terms) + "</ul></main></body></html>";
                 byte[] response = html.getBytes(StandardCharsets.UTF_8);
                 exchange.getResponseHeaders().set("Content-Type", "text/html; charset=UTF-8");
@@ -675,7 +722,7 @@ public class App {
                 String html = "<!doctype html><html lang='ja'><head><meta charset='UTF-8'>";
                 html += "<meta name='viewport' content='width=device-width,initial-scale=1'>";
                 html += "<title>セキュマネ用語帳</title>" + pageStyles() + "</head><body><main class='page'>";
-                html += "<header class='hero'><h1>セキュマネ用語帳</h1><p>答えを隠して、ひとつずつ覚えよう。</p></header>";
+                html += "<header class='hero'><h1>セキュマネ用語帳</h1></header>";
                 html += "<section class='panel'><h2 class='section-title'>新しい用語を追加</h2>";
                 html += "<form class='form-grid' method='post' action='/add'>";
                 html += "<div class='field'><label>用語</label><input name='word' placeholder='例：機密性' required></div>";
@@ -683,7 +730,7 @@ public class App {
                 html += "<div class='field wide'><label>試験のポイント</label><input name='examPoint' placeholder='覚えておきたいポイント' required></div>";
                 html += "<div class='field'><label>カテゴリ</label><select name='category'>" + categoryOptions("情報セキュリティ") + "</select></div>";
                 html += "<div class='field'><label>重要度</label><select name='importance'><option value='3'>★★★</option><option value='2' selected>★★</option><option value='1'>★</option></select></div>";
-                html += "<div class='field'><label>学習順</label><input type='number' min='1' name='learningOrder' value='999' required></div>";
+                html += "<div class='field'><label>学習順</label><input type='number' min='1' name='learningOrder' value='" + nextLearningOrder() + "' required></div>";
                 html += "<div class='field wide'><label>関連用語</label><input name='relatedTerms' placeholder='例：暗号化, ハッシュ関数'></div>";
                 html += "<button>用語を追加する</button></form></section>";
 
