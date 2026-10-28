@@ -2,6 +2,7 @@ import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URLDecoder;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -503,6 +504,22 @@ public class App {
         return value.equals(current) ? " selected" : "";
     }
 
+    static int positiveInt(String value, int defaultValue) {
+        try {
+            int number = Integer.parseInt(value);
+            return number > 0 ? number : defaultValue;
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
+    }
+
+    static String pageUrl(String keyword, String category, String status, int page) {
+        return "/?keyword=" + URLEncoder.encode(keyword, StandardCharsets.UTF_8)
+                + "&filterCategory=" + URLEncoder.encode(category, StandardCharsets.UTF_8)
+                + "&filterStatus=" + URLEncoder.encode(status, StandardCharsets.UTF_8)
+                + "&page=" + page;
+    }
+
     static Term findTerm(int id) throws IOException {
         for (Term term : selectTerms()) {
             if (term.getId() == id) return term;
@@ -581,6 +598,7 @@ public class App {
                 + ".progress-summary{display:flex;justify-content:space-between;gap:12px;margin-bottom:8px;font-weight:700}.progress-track{height:12px;overflow:hidden;background:#dfe7f2;border-radius:999px}.progress-bar{height:100%;background:#36a269;border-radius:999px}"
                 + ".filter-form{display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:10px;align-items:end}.filter-form button{grid-column:auto}.filter-reset{padding:12px 14px;text-align:center;color:#42526b;text-decoration:none;background:#edf2f7;border-radius:10px;font-weight:700}"
                 + ".result-count{margin:-18px 0 20px;color:#65738b;font-weight:700}.empty-result{padding:24px;text-align:center;background:#fff;border:1px solid #dfe7f2;border-radius:16px;color:#65738b}"
+                + ".pagination{display:flex;align-items:center;justify-content:center;gap:14px;margin:0 0 34px}.page-link{padding:9px 15px;border-radius:9px;background:#e7f0fd;color:#195bad;text-decoration:none;font-weight:700}.page-position{color:#65738b;font-weight:700}"
                 + ".add-panel{margin-top:34px}.add-panel>summary{cursor:pointer;font-size:18px;font-weight:700;color:#173b72}.add-panel .form-grid{margin-top:20px}"
                 + ".form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}"
                 + ".field{display:flex;flex-direction:column;gap:6px}.field.wide{grid-column:1/-1}"
@@ -747,6 +765,7 @@ public class App {
                 String filterCategory = queryValue(query, "filterCategory");
                 String filterStatus = queryValue(query, "filterStatus");
                 if (filterStatus.isEmpty()) filterStatus = "learning";
+                int currentPage = positiveInt(queryValue(query, "page"), 1);
                 String html = "<!doctype html><html lang='ja'><head><meta charset='UTF-8'>";
                 html += "<meta name='viewport' content='width=device-width,initial-scale=1'>";
                 html += "<title>セキュマネ用語帳</title>" + pageStyles() + "</head><body><main class='page'>";
@@ -779,13 +798,26 @@ public class App {
                         filteredTerms.add(term);
                     }
                 }
-                html += "<section><h2 class='section-title'>おすすめ学習順</h2><p class='result-count'>" + filteredTerms.size() + "件表示</p>";
+                int pageSize = 20;
+                int totalPages = Math.max(1, (filteredTerms.size() + pageSize - 1) / pageSize);
+                currentPage = Math.min(currentPage, totalPages);
+                int fromIndex = (currentPage - 1) * pageSize;
+                int toIndex = Math.min(fromIndex + pageSize, filteredTerms.size());
+                List<Term> pageTerms = filteredTerms.subList(fromIndex, toIndex);
+                html += "<section><h2 class='section-title'>おすすめ学習順</h2><p class='result-count'>全" + filteredTerms.size() + "件（" + currentPage + " / " + totalPages + "ページ）</p>";
                 if (filteredTerms.isEmpty()) {
                     html += "<p class='empty-result'>条件に合う用語がありません。</p>";
                 } else {
                     html += "<ul class='term-list'>";
-                    for (Term term : filteredTerms) html += termToHtml(term, terms);
+                    for (Term term : pageTerms) html += termToHtml(term, terms);
                     html += "</ul>";
+                    if (totalPages > 1) {
+                        html += "<nav class='pagination'>";
+                        if (currentPage > 1) html += "<a class='page-link' href='" + escapeHtml(pageUrl(keyword, filterCategory, filterStatus, currentPage - 1)) + "'>← 前へ</a>";
+                        html += "<span class='page-position'>" + currentPage + " / " + totalPages + "</span>";
+                        if (currentPage < totalPages) html += "<a class='page-link' href='" + escapeHtml(pageUrl(keyword, filterCategory, filterStatus, currentPage + 1)) + "'>次へ →</a>";
+                        html += "</nav>";
+                    }
                 }
                 html += "</section>";
                 html += "<details class='panel add-panel'><summary>新しい用語を追加</summary>";
