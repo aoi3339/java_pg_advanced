@@ -481,6 +481,31 @@ public class App {
         return "";
     }
 
+    static String queryValue(String query, String name) {
+        if (query == null) return "";
+        return formValue(query, name);
+    }
+
+    static boolean matchesFilter(Term term, String keyword, String category,
+                                 String importance, String status) {
+        String normalizedKeyword = keyword.toLowerCase();
+        boolean matchesKeyword = normalizedKeyword.isEmpty()
+                || term.getWord().toLowerCase().contains(normalizedKeyword)
+                || term.getMeaning().toLowerCase().contains(normalizedKeyword)
+                || term.getExamPoint().toLowerCase().contains(normalizedKeyword);
+        boolean matchesCategory = category.isEmpty() || term.getCategory().equals(category);
+        boolean matchesImportance = importance.isEmpty()
+                || term.getImportance() == Integer.parseInt(importance);
+        boolean matchesStatus = status.isEmpty()
+                || (status.equals("memorized") && term.isMemorized())
+                || (status.equals("learning") && !term.isMemorized());
+        return matchesKeyword && matchesCategory && matchesImportance && matchesStatus;
+    }
+
+    static String selected(String value, String current) {
+        return value.equals(current) ? " selected" : "";
+    }
+
     static Term findTerm(int id) throws IOException {
         for (Term term : selectTerms()) {
             if (term.getId() == id) return term;
@@ -556,6 +581,9 @@ public class App {
                 + ".hero h1{margin:0;color:#173b72;font-size:clamp(28px,5vw,42px)}"
                 + ".hero p{margin:6px 0 0;color:#65738b}"
                 + ".panel{padding:24px;margin-bottom:34px;background:#fff;border:1px solid #dfe7f2;border-radius:18px;box-shadow:0 10px 30px rgba(38,73,120,.08)}"
+                + ".progress-summary{display:flex;justify-content:space-between;gap:12px;margin-bottom:8px;font-weight:700}.progress-track{height:12px;overflow:hidden;background:#dfe7f2;border-radius:999px}.progress-bar{height:100%;background:#36a269;border-radius:999px}"
+                + ".filter-form{display:grid;grid-template-columns:2fr repeat(3,1fr) auto;gap:10px;align-items:end}.filter-form button{grid-column:auto}.filter-reset{padding:12px 14px;text-align:center;color:#42526b;text-decoration:none;background:#edf2f7;border-radius:10px;font-weight:700}"
+                + ".result-count{margin:-18px 0 20px;color:#65738b;font-weight:700}.empty-result{padding:24px;text-align:center;background:#fff;border:1px solid #dfe7f2;border-radius:16px;color:#65738b}"
                 + ".form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}"
                 + ".field{display:flex;flex-direction:column;gap:6px}.field.wide{grid-column:1/-1}"
                 + "label{font-size:14px;font-weight:700;color:#42526b}"
@@ -581,7 +609,8 @@ public class App {
                 + ".action.primary{background:#e7f0fd;color:#195bad}.action.edit{background:#edf2f7;color:#42526b}.action.delete{color:#a63d45;background:#fff0f1}"
                 + ".memorized{padding:18px 20px;background:#eaf1fa;border-radius:16px}.memorized>summary{cursor:pointer;font-weight:700;color:#294e80}"
                 + ".memorized .term-list{margin:18px 0 0}"
-                + "@media(max-width:600px){.page{padding-top:28px}.panel{padding:18px}.form-grid{grid-template-columns:1fr}.term-title{align-items:flex-start}}"
+                + "@media(max-width:760px){.filter-form{grid-template-columns:1fr 1fr}.filter-form .keyword{grid-column:1/-1}}"
+                + "@media(max-width:600px){.page{padding-top:28px}.panel{padding:18px}.form-grid,.filter-form{grid-template-columns:1fr}.filter-form .keyword{grid-column:auto}.term-title{align-items:flex-start}}"
                 + "</style>";
     }
 
@@ -719,6 +748,11 @@ public class App {
             }
 
             if (path.equals("/")) {
+                String query = exchange.getRequestURI().getRawQuery();
+                String keyword = queryValue(query, "keyword").trim();
+                String filterCategory = queryValue(query, "filterCategory");
+                String filterImportance = queryValue(query, "filterImportance");
+                String filterStatus = queryValue(query, "filterStatus");
                 String html = "<!doctype html><html lang='ja'><head><meta charset='UTF-8'>";
                 html += "<meta name='viewport' content='width=device-width,initial-scale=1'>";
                 html += "<title>セキュマネ用語帳</title>" + pageStyles() + "</head><body><main class='page'>";
@@ -735,26 +769,43 @@ public class App {
                 html += "<button>用語を追加する</button></form></section>";
 
                 List<Term> terms = selectTerms();
-                html += "<section><h2 class='section-title'>おすすめ学習順</h2><ul class='term-list'>";
-                for (Term term : terms) {
-                    if (!term.isMemorized()) html += termToHtml(term, terms);
-                }
-                html += "</ul></section>";
-
                 int memorizedCount = 0;
                 for (Term term : terms) {
-                    if (term.isMemorized()) {
-                        memorizedCount++;
-                    }
+                    if (term.isMemorized()) memorizedCount++;
                 }
+                int progress = terms.isEmpty() ? 0 : memorizedCount * 100 / terms.size();
+                html += "<section class='panel'><h2 class='section-title'>学習の進み具合</h2>";
+                html += "<div class='progress-summary'><span>" + memorizedCount + " / " + terms.size() + "語を覚えた</span><span>" + progress + "%</span></div>";
+                html += "<div class='progress-track'><div class='progress-bar' style='width:" + progress + "%'></div></div></section>";
 
-                html += "<details class='memorized'><summary>覚えた用語（" + memorizedCount + "件）</summary><ul class='term-list'>";
+                html += "<section class='panel'><h2 class='section-title'>用語を探す</h2>";
+                html += "<form class='filter-form' method='get' action='/'>";
+                html += "<div class='field keyword'><label>キーワード</label><input name='keyword' value='" + escapeHtml(keyword) + "' placeholder='用語や説明から検索'></div>";
+                html += "<div class='field'><label>カテゴリ</label><select name='filterCategory'><option value=''>すべて</option>";
+                String[] filterCategories = {"情報セキュリティ", "セキュリティ管理", "ネットワーク・システム", "法務・コンプライアンス"};
+                for (String category : filterCategories) {
+                    html += "<option value='" + category + "'" + selected(category, filterCategory) + ">" + category + "</option>";
+                }
+                html += "</select></div>";
+                html += "<div class='field'><label>重要度</label><select name='filterImportance'><option value=''>すべて</option><option value='3'" + selected("3", filterImportance) + ">★★★</option><option value='2'" + selected("2", filterImportance) + ">★★</option><option value='1'" + selected("1", filterImportance) + ">★</option></select></div>";
+                html += "<div class='field'><label>学習状況</label><select name='filterStatus'><option value=''>すべて</option><option value='learning'" + selected("learning", filterStatus) + ">学習中</option><option value='memorized'" + selected("memorized", filterStatus) + ">覚えた</option></select></div>";
+                html += "<button>検索する</button><a class='filter-reset' href='/'>リセット</a></form></section>";
+
+                List<Term> filteredTerms = new ArrayList<>();
                 for (Term term : terms) {
-                    if (term.isMemorized()) {
-                        html += termToHtml(term, terms);
+                    if (matchesFilter(term, keyword, filterCategory, filterImportance, filterStatus)) {
+                        filteredTerms.add(term);
                     }
                 }
-                html += "</ul></details></main></body></html>";
+                html += "<section><h2 class='section-title'>おすすめ学習順</h2><p class='result-count'>" + filteredTerms.size() + "件表示</p>";
+                if (filteredTerms.isEmpty()) {
+                    html += "<p class='empty-result'>条件に合う用語がありません。</p>";
+                } else {
+                    html += "<ul class='term-list'>";
+                    for (Term term : filteredTerms) html += termToHtml(term, terms);
+                    html += "</ul>";
+                }
+                html += "</section></main></body></html>";
                 byte[] response = html.getBytes(StandardCharsets.UTF_8);
                 exchange.getResponseHeaders().set("Content-Type", "text/html; charset=UTF-8");
                 exchange.sendResponseHeaders(200, response.length);
