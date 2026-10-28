@@ -19,15 +19,20 @@ class Term {
     private final String examPoint;
     private final String category;
     private final int importance;
+    private final int learningOrder;
+    private final String relatedTerms;
     private boolean memorized;
 
-    Term(int id, String word, String meaning, String examPoint, String category, int importance) {
+    Term(int id, String word, String meaning, String examPoint, String category, int importance,
+         int learningOrder, String relatedTerms) {
         this.id = id;
         this.word = word;
         this.meaning = meaning;
         this.examPoint = examPoint;
         this.category = category;
         this.importance = importance;
+        this.learningOrder = learningOrder;
+        this.relatedTerms = relatedTerms;
         this.memorized = false;
     }
 
@@ -37,6 +42,8 @@ class Term {
     String getExamPoint() { return examPoint; }
     String getCategory() { return category; }
     int getImportance() { return importance; }
+    int getLearningOrder() { return learningOrder; }
+    String getRelatedTerms() { return relatedTerms; }
     boolean isMemorized() { return memorized; }
     void setMemorized(boolean memorized) { this.memorized = memorized; }
 }
@@ -52,6 +59,8 @@ public class App {
                 + "exam_point TEXT NOT NULL DEFAULT '', "
                 + "category TEXT NOT NULL DEFAULT '情報セキュリティ', "
                 + "importance INTEGER NOT NULL DEFAULT 2, "
+                + "learning_order INTEGER NOT NULL DEFAULT 999, "
+                + "related_terms TEXT NOT NULL DEFAULT '', "
                 + "memorized INTEGER NOT NULL DEFAULT 0)";
         try (Connection connection = DriverManager.getConnection(DB_URL);
              Statement statement = connection.createStatement()) {
@@ -61,6 +70,12 @@ public class App {
             }
             if (!columnExists(connection, "importance")) {
                 statement.executeUpdate("ALTER TABLE terms ADD COLUMN importance INTEGER NOT NULL DEFAULT 2");
+            }
+            if (!columnExists(connection, "learning_order")) {
+                statement.executeUpdate("ALTER TABLE terms ADD COLUMN learning_order INTEGER NOT NULL DEFAULT 999");
+            }
+            if (!columnExists(connection, "related_terms")) {
+                statement.executeUpdate("ALTER TABLE terms ADD COLUMN related_terms TEXT NOT NULL DEFAULT ''");
             }
         }
     }
@@ -75,8 +90,9 @@ public class App {
         return false;
     }
 
-    static void insertTerm(String word, String meaning, String examPoint, String category, int importance) throws IOException {
-        String sql = "INSERT INTO terms (word, meaning, exam_point, category, importance, memorized) VALUES (?, ?, ?, ?, ?, 0)";
+    static void insertTerm(String word, String meaning, String examPoint, String category, int importance,
+                           int learningOrder, String relatedTerms) throws IOException {
+        String sql = "INSERT INTO terms (word, meaning, exam_point, category, importance, learning_order, related_terms, memorized) VALUES (?, ?, ?, ?, ?, ?, ?, 0)";
         try (Connection connection = DriverManager.getConnection(DB_URL);
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, word);
@@ -84,6 +100,8 @@ public class App {
             statement.setString(3, examPoint);
             statement.setString(4, category);
             statement.setInt(5, importance);
+            statement.setInt(6, learningOrder);
+            statement.setString(7, relatedTerms);
             statement.executeUpdate();
         } catch (SQLException e) {
             throw new IOException(e);
@@ -232,6 +250,91 @@ public class App {
         }
     }
 
+    static void insertStudyTerms() throws IOException {
+        String[][] terms = {
+                {"情報資産", "組織にとって価値があり、保護すべき情報や情報システム、設備、人材などの総称。", "情報資産を洗い出し、管理責任者、重要度、取扱方法を明確にすることがリスク管理の出発点。", "セキュリティ管理", "3"},
+                {"脅威", "情報資産に損害を与える可能性がある原因。攻撃者、マルウェア、災害、誤操作などが該当する。", "脅威が脆弱性を利用するとインシデントにつながる。脅威は原因、脆弱性は弱点。", "情報セキュリティ", "3"},
+                {"SIEM", "複数の機器やシステムのログを収集・一元管理し、相関分析によって攻撃の兆候や異常を検知する仕組み。", "単独のログでは見つけにくい事象を横断的に分析する。SOCでの監視やインシデント検知に活用される。", "情報セキュリティ", "3"},
+                {"ゼロトラスト", "社内外を問わず全てのアクセスを無条件には信用せず、利用者や端末を継続的に確認する考え方。", "内部ネットワークも安全とは限らないことを前提とし、最小権限や多要素認証などを組み合わせる。", "情報セキュリティ", "3"},
+                {"CVSS", "脆弱性の深刻度を共通の尺度で評価する仕組み。基本評価、現状評価、環境評価の基準がある。", "現状評価は攻撃コードや対策状況によって時間とともに変化し、環境評価は利用組織の環境によって異なる。", "セキュリティ管理", "3"},
+                {"デジタルフォレンジックス", "インシデント発生時に、法的証拠となり得るデータを適切に収集・保全し、調査・分析する活動。", "証拠の完全性を保ち、誰がいつ扱ったかという記録を残す。原因究明だけでなく証拠保全が重要。", "セキュリティ管理", "3"},
+                {"IDS・IPS", "IDSは不正な通信を検知して通知し、IPSは検知した通信を自動的に遮断する仕組み。", "IDSは検知、IPSは検知と防御。ファイアウォールの許可通信に含まれる攻撃も検査できる。", "情報セキュリティ", "3"},
+                {"UTM", "ファイアウォール、IDS・IPS、アンチウイルスなど複数のセキュリティ機能を一台に統合した機器。", "運用を一元化しやすい一方、単一障害点や性能不足にならないよう設計する。", "情報セキュリティ", "2"},
+                {"サイバーキルチェーン", "攻撃者の行動を偵察、武器化、配送、攻撃、侵入、遠隔操作、目的実行などの段階に分けて捉える考え方。", "各段階で攻撃を検知・阻止し、最終目的の達成を防ぐために利用する。", "情報セキュリティ", "3"},
+                {"リスクベース認証", "アクセス元、端末、時間帯、行動などからリスクを判定し、必要に応じて追加認証を要求する方式。", "通常と異なるアクセスだけ認証を強化する。多要素認証は異なる認証要素を組み合わせる方式。", "情報セキュリティ", "3"},
+                {"標的型攻撃", "特定の組織や個人を狙い、業務に関係する内容を装ったメールなどで侵入を試みる攻撃。", "不審な添付ファイルやURLを開かない教育に加え、侵入を前提とした多層防御と監視が必要。", "情報セキュリティ", "3"},
+                {"ソーシャルエンジニアリング", "人の心理や行動上の隙を利用して、秘密情報を聞き出したり不正行為へ誘導したりする手法。", "なりすまし、のぞき見、ゴミ箱あさりなどが該当する。技術対策だけでなく教育と手順が重要。", "情報セキュリティ", "3"},
+                {"内部不正・不正のトライアングル", "内部者による不正は、動機・プレッシャー、機会、正当化の三要素がそろうと発生しやすいという考え方。", "権限管理や職務分離で機会を減らし、相談体制や教育なども組み合わせて防止する。", "セキュリティ管理", "3"},
+                {"情報の分類・ラベル付け", "情報を重要度や機密性に応じて分類し、取扱区分をラベルなどで明示する管理策。", "社外秘などを明示して取扱ルールを周知し、知らなかったという状態を防ぐ。", "セキュリティ管理", "3"},
+                {"委託先管理", "業務や情報処理を外部へ委託する際に、選定、契約、監督、終了までセキュリティを管理する活動。", "委託しても管理責任がなくなるわけではない。契約に対策、事故報告、再委託などを定める。", "セキュリティ管理", "3"},
+                {"情報セキュリティ監査", "情報セキュリティ対策や管理の状況を、独立した立場から証拠に基づいて評価する活動。", "監査人の独立性と客観性が重要。発見事項を報告し、改善につなげる。", "セキュリティ管理", "2"},
+                {"ISO/IEC 27001・JIS Q 27001", "ISMSを構築・運用する組織に対する要求事項を定めた国際規格と、その日本産業規格。", "リスクに基づいて管理策を選び、継続的に改善する。ISO/IEC 27002は管理策の実践指針。", "セキュリティ管理", "3"},
+                {"アンチパスバック", "入室記録のないカードでの退室や、退室記録のないカードでの再入室を許可しない入退室管理方式。", "カードの貸し借りや共連れへの対策として用いる。入室と退室の対応関係を管理する。", "情報セキュリティ", "2"},
+                {"匿名加工情報・仮名加工情報", "匿名加工情報は特定の個人を識別できず復元できないよう加工した情報。仮名加工情報は他の情報と照合しなければ個人を識別できないよう加工した情報。", "匿名加工情報と仮名加工情報では利用や第三者提供に関する規律が異なる。加工方法と目的を区別する。", "法務・コンプライアンス", "3"},
+                {"不正アクセス禁止法", "他人のID・パスワードを不正利用する行為や、アクセス制御を回避して侵入する行為などを禁止する法律。", "不正アクセス行為だけでなく、他人の認証情報を不正に取得・提供する行為なども規制対象。", "法務・コンプライアンス", "3"}
+        };
+        String existsSql = "SELECT 1 FROM terms WHERE word = ? LIMIT 1";
+        String insertSql = "INSERT INTO terms (word, meaning, exam_point, category, importance, memorized) VALUES (?, ?, ?, ?, ?, 0)";
+        try (Connection connection = DriverManager.getConnection(DB_URL);
+             PreparedStatement exists = connection.prepareStatement(existsSql);
+             PreparedStatement insert = connection.prepareStatement(insertSql)) {
+            for (String[] term : terms) {
+                exists.setString(1, term[0]);
+                try (ResultSet result = exists.executeQuery()) {
+                    if (result.next()) continue;
+                }
+                for (int i = 0; i < 4; i++) insert.setString(i + 1, term[i]);
+                insert.setInt(5, Integer.parseInt(term[4]));
+                insert.executeUpdate();
+            }
+        } catch (SQLException e) {
+            throw new IOException(e);
+        }
+    }
+
+    static void applyLearningData() throws IOException {
+        String[][] learningData = {
+                {"情報資産", "1", "機密性・完全性・可用性（CIA）, 情報の分類・ラベル付け"},
+                {"機密性・完全性・可用性（CIA）", "2", "情報資産, 脅威, 脆弱性"}, {"脅威", "3", "脆弱性, リスクアセスメント"},
+                {"脆弱性", "4", "脅威, CVSS, ゼロデイ攻撃"}, {"リスクアセスメント", "5", "脅威, 脆弱性, リスク対応"},
+                {"リスク対応", "6", "リスクアセスメント, ISMS（情報セキュリティマネジメントシステム）"},
+                {"情報セキュリティポリシー", "7", "ISMS（情報セキュリティマネジメントシステム）, 情報の分類・ラベル付け"},
+                {"ISMS（情報セキュリティマネジメントシステム）", "8", "情報セキュリティポリシー, ISO/IEC 27001・JIS Q 27001"},
+                {"ISO/IEC 27001・JIS Q 27001", "9", "ISMS（情報セキュリティマネジメントシステム）, 情報セキュリティ監査"},
+                {"情報の分類・ラベル付け", "10", "情報資産, アクセス制御"}, {"内部不正・不正のトライアングル", "11", "アクセス制御, 情報セキュリティ監査"},
+                {"委託先管理", "12", "リスクアセスメント, 情報セキュリティ監査"}, {"情報セキュリティ監査", "13", "ISMS（情報セキュリティマネジメントシステム）, 委託先管理"},
+                {"アクセス制御", "14", "多要素認証（MFA）, ゼロトラスト"}, {"多要素認証（MFA）", "15", "アクセス制御, リスクベース認証"},
+                {"リスクベース認証", "16", "多要素認証（MFA）, ゼロトラスト"}, {"ゼロトラスト", "17", "アクセス制御, 多要素認証（MFA）"},
+                {"アンチパスバック", "18", "アクセス制御, 多要素認証（MFA）"}, {"ハッシュ関数", "19", "デジタル署名, 暗号化"},
+                {"暗号化", "20", "ハッシュ関数, デジタル署名, TLS"}, {"デジタル署名", "21", "ハッシュ関数, デジタル証明書（公開鍵証明書）"},
+                {"デジタル証明書（公開鍵証明書）", "22", "デジタル署名, TLS"}, {"TLS", "23", "暗号化, デジタル証明書（公開鍵証明書）"},
+                {"DNS", "24", "TLS, ファイアウォール"}, {"ファイアウォール", "25", "DMZ, WAF（Web Application Firewall）, IDS・IPS"},
+                {"DMZ", "26", "ファイアウォール, VPN"}, {"VPN", "27", "暗号化, TLS"}, {"WAF（Web Application Firewall）", "28", "SQLインジェクション, クロスサイトスクリプティング（XSS）"},
+                {"IDS・IPS", "29", "ファイアウォール, SIEM"}, {"UTM", "30", "ファイアウォール, IDS・IPS"}, {"SIEM", "31", "IDS・IPS, CSIRT（シーサート）, インシデント対応"},
+                {"マルウェア", "32", "ランサムウェア, ゼロデイ攻撃"}, {"フィッシング", "33", "ソーシャルエンジニアリング, 標的型攻撃"},
+                {"ソーシャルエンジニアリング", "34", "フィッシング, 内部不正・不正のトライアングル"}, {"標的型攻撃", "35", "フィッシング, サイバーキルチェーン"},
+                {"クロスサイトスクリプティング（XSS）", "36", "WAF（Web Application Firewall）, SQLインジェクション"}, {"SQLインジェクション", "37", "WAF（Web Application Firewall）, クロスサイトスクリプティング（XSS）"},
+                {"ランサムウェア", "38", "マルウェア, バックアップ"}, {"ゼロデイ攻撃", "39", "脆弱性, CVSS"}, {"CVSS", "40", "脆弱性, ゼロデイ攻撃"},
+                {"サイバーキルチェーン", "41", "標的型攻撃, SIEM"}, {"インシデント対応", "42", "CSIRT（シーサート）, デジタルフォレンジックス"},
+                {"CSIRT（シーサート）", "43", "インシデント対応, SIEM"}, {"デジタルフォレンジックス", "44", "インシデント対応, CSIRT（シーサート）"},
+                {"バックアップ", "45", "ランサムウェア, RTO・RPO"}, {"RTO・RPO", "46", "バックアップ, BCP（事業継続計画）"},
+                {"BCP（事業継続計画）", "47", "RTO・RPO, バックアップ"}, {"個人情報保護法", "48", "匿名加工情報・仮名加工情報"},
+                {"匿名加工情報・仮名加工情報", "49", "個人情報保護法"}, {"不正アクセス禁止法", "50", "アクセス制御, SQLインジェクション"}
+        };
+        String sql = "UPDATE terms SET learning_order = ?, related_terms = ? WHERE word = ?";
+        try (Connection connection = DriverManager.getConnection(DB_URL);
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            for (String[] item : learningData) {
+                statement.setInt(1, Integer.parseInt(item[1]));
+                statement.setString(2, item[2]);
+                statement.setString(3, item[0]);
+                statement.executeUpdate();
+            }
+        } catch (SQLException e) {
+            throw new IOException(e);
+        }
+    }
+
     static void updateMemorized(int id, boolean memorized) throws IOException {
         String sql = "UPDATE terms SET memorized = ? WHERE id = ?";
         try (Connection connection = DriverManager.getConnection(DB_URL);
@@ -244,8 +347,9 @@ public class App {
         }
     }
 
-    static void updateTerm(int id, String word, String meaning, String examPoint, String category, int importance) throws IOException {
-        String sql = "UPDATE terms SET word = ?, meaning = ?, exam_point = ?, category = ?, importance = ? WHERE id = ?";
+    static void updateTerm(int id, String word, String meaning, String examPoint, String category, int importance,
+                           int learningOrder, String relatedTerms) throws IOException {
+        String sql = "UPDATE terms SET word = ?, meaning = ?, exam_point = ?, category = ?, importance = ?, learning_order = ?, related_terms = ? WHERE id = ?";
         try (Connection connection = DriverManager.getConnection(DB_URL);
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, word);
@@ -253,7 +357,9 @@ public class App {
             statement.setString(3, examPoint);
             statement.setString(4, category);
             statement.setInt(5, importance);
-            statement.setInt(6, id);
+            statement.setInt(6, learningOrder);
+            statement.setString(7, relatedTerms);
+            statement.setInt(8, id);
             statement.executeUpdate();
         } catch (SQLException e) {
             throw new IOException(e);
@@ -273,16 +379,16 @@ public class App {
 
     static List<Term> selectTerms() throws IOException {
         List<Term> terms = new ArrayList<>();
-        String sql = "SELECT id, word, meaning, exam_point, category, importance, memorized FROM terms "
-                + "ORDER BY CASE category WHEN '情報セキュリティ' THEN 1 WHEN 'セキュリティ管理' THEN 2 "
-                + "WHEN 'ネットワーク・システム' THEN 3 WHEN '法務・コンプライアンス' THEN 4 ELSE 5 END, importance DESC, id";
+        String sql = "SELECT id, word, meaning, exam_point, category, importance, learning_order, related_terms, memorized "
+                + "FROM terms ORDER BY learning_order, id";
         try (Connection connection = DriverManager.getConnection(DB_URL);
              PreparedStatement statement = connection.prepareStatement(sql);
              ResultSet results = statement.executeQuery()) {
             while (results.next()) {
                 Term term = new Term(results.getInt("id"), results.getString("word"),
                         results.getString("meaning"), results.getString("exam_point"),
-                        results.getString("category"), results.getInt("importance"));
+                        results.getString("category"), results.getInt("importance"),
+                        results.getInt("learning_order"), results.getString("related_terms"));
                 term.setMemorized(results.getInt("memorized") == 1);
                 terms.add(term);
             }
@@ -302,7 +408,9 @@ public class App {
             json.append("\",\"examPoint\":\"").append(escapeJson(term.getExamPoint()));
             json.append("\",\"category\":\"").append(escapeJson(term.getCategory()));
             json.append("\",\"importance\":").append(term.getImportance());
-            json.append(",\"memorized\":").append(term.isMemorized()).append("}");
+            json.append(",\"learningOrder\":").append(term.getLearningOrder());
+            json.append(",\"relatedTerms\":\"").append(escapeJson(term.getRelatedTerms()));
+            json.append("\",\"memorized\":").append(term.isMemorized()).append("}");
         }
         return json.append("]").toString();
     }
@@ -335,6 +443,30 @@ public class App {
         return null;
     }
 
+    static Term findTermByWord(String word, List<Term> terms) {
+        for (Term term : terms) {
+            if (term.getWord().equals(word)) return term;
+        }
+        return null;
+    }
+
+    static String relatedTermsToHtml(Term term, List<Term> terms) {
+        StringBuilder html = new StringBuilder();
+        for (String word : term.getRelatedTerms().split(",")) {
+            String trimmedWord = word.trim();
+            if (trimmedWord.isEmpty()) continue;
+            if (html.length() > 0) html.append("、");
+            Term related = findTermByWord(trimmedWord, terms);
+            if (related == null) {
+                html.append(escapeHtml(trimmedWord));
+            } else {
+                html.append("<a href='/term?id=").append(related.getId()).append("'>")
+                        .append(escapeHtml(trimmedWord)).append("</a>");
+            }
+        }
+        return html.toString();
+    }
+
     static String categoryOptions(String selected) {
         String[] categories = {"情報セキュリティ", "セキュリティ管理", "ネットワーク・システム", "法務・コンプライアンス"};
         StringBuilder options = new StringBuilder();
@@ -346,8 +478,9 @@ public class App {
         return options.toString();
     }
 
-    static String termToHtml(Term term) {
-        String html = "<li class='term-card'><div class='term-meta'><span class='category'>" + escapeHtml(term.getCategory()) + "</span>";
+    static String termToHtml(Term term, List<Term> terms) {
+        String html = "<li class='term-card'><div class='term-meta'><span class='study-number'>学習 " + term.getLearningOrder() + "</span>";
+        html += "<span class='category'>" + escapeHtml(term.getCategory()) + "</span>";
         html += "<span class='importance'>重要度 " + "★".repeat(term.getImportance()) + "</span></div>";
         html += "<div class='term-title'><strong>" + escapeHtml(term.getWord()) + "とは？</strong>";
         html += term.isMemorized() ? "<span class='badge'>覚えた</span>" : "<span class='badge learning'>学習中</span>";
@@ -355,7 +488,11 @@ public class App {
         html += escapeHtml(term.getMeaning());
         html += "</p><h3>試験のポイント</h3><p>";
         html += escapeHtml(term.getExamPoint());
-        html += "</p></div></details><div class='actions'>";
+        html += "</p>";
+        if (!term.getRelatedTerms().isEmpty()) {
+            html += "<h3>関連用語</h3><p class='related'>" + relatedTermsToHtml(term, terms) + "</p>";
+        }
+        html += "</div></details><div class='actions'>";
         html += "<a class='action primary' href='/memorized?id=" + term.getId() + "&memorized=";
         html += !term.isMemorized() + "'>";
         html += term.isMemorized() ? "復習する" : "覚えた";
@@ -385,7 +522,7 @@ public class App {
                 + ".section-title{margin:0 0 14px;font-size:22px;color:#173b72}"
                 + ".term-list{display:grid;gap:16px;margin:0 0 34px;padding:0;list-style:none}"
                 + ".term-card{padding:20px;background:#fff;border:1px solid #dfe7f2;border-radius:16px;box-shadow:0 5px 18px rgba(38,73,120,.06)}"
-                + ".term-meta{display:flex;justify-content:space-between;gap:10px;margin-bottom:8px;font-size:12px;font-weight:700}.category{color:#315f9d}.importance{color:#d27a00}"
+                + ".term-meta{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:12px;font-weight:700}.study-number{padding:3px 8px;border-radius:999px;background:#173b72;color:#fff}.category{color:#315f9d}.importance{margin-left:auto;color:#d27a00}"
                 + ".category-section{margin:0 0 36px}.category-title{padding-bottom:8px;border-bottom:2px solid #d9e5f5;color:#173b72}"
                 + ".term-title{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:18px}"
                 + ".badge{flex:none;padding:3px 9px;border-radius:999px;background:#def6e8;color:#187443;font-size:12px;font-weight:700}"
@@ -393,6 +530,7 @@ public class App {
                 + ".answer{margin:14px 0}.answer summary{cursor:pointer;color:#2367c7;font-weight:700}"
                 + ".answer-body{margin-top:12px;padding:14px 16px;background:#f6f9fd;border-left:4px solid #79a7e7;border-radius:8px}"
                 + ".answer-body p{margin:0;white-space:pre-line}.answer-body h3{margin:14px 0 4px;font-size:14px;color:#52647e}"
+                + ".related{color:#315f9d;font-weight:600}.related a{color:#2367c7;text-decoration:underline;text-underline-offset:3px}"
                 + ".actions{display:flex;gap:10px;margin-top:14px}"
                 + ".action{padding:8px 13px;border-radius:9px;text-decoration:none;font-size:14px;font-weight:700}"
                 + ".action.primary{background:#e7f0fd;color:#195bad}.action.edit{background:#edf2f7;color:#42526b}.action.delete{color:#a63d45;background:#fff0f1}"
@@ -408,6 +546,8 @@ public class App {
         insertInitialTerms();
         classifyExistingTerms();
         insertAdditionalTerms();
+        insertStudyTerms();
+        applyLearningData();
 
         server.createContext("/", exchange -> {
             String path = exchange.getRequestURI().getPath();
@@ -420,8 +560,10 @@ public class App {
                 String examPoint = formValue(body, "examPoint");
                 String category = formValue(body, "category");
                 int importance = Integer.parseInt(formValue(body, "importance"));
+                int learningOrder = Integer.parseInt(formValue(body, "learningOrder"));
+                String relatedTerms = formValue(body, "relatedTerms");
                 if (!word.isEmpty() && !meaning.isEmpty() && !examPoint.isEmpty() && !category.isEmpty()) {
-                    insertTerm(word, meaning, examPoint, category, importance);
+                    insertTerm(word, meaning, examPoint, category, importance, learningOrder, relatedTerms);
                 }
                 exchange.getResponseHeaders().set("Location", "/");
                 exchange.sendResponseHeaders(303, -1);
@@ -437,8 +579,10 @@ public class App {
                 String examPoint = formValue(body, "examPoint");
                 String category = formValue(body, "category");
                 int importance = Integer.parseInt(formValue(body, "importance"));
+                int learningOrder = Integer.parseInt(formValue(body, "learningOrder"));
+                String relatedTerms = formValue(body, "relatedTerms");
                 if (!word.isEmpty() && !meaning.isEmpty() && !examPoint.isEmpty() && !category.isEmpty()) {
-                    updateTerm(id, word, meaning, examPoint, category, importance);
+                    updateTerm(id, word, meaning, examPoint, category, importance, learningOrder, relatedTerms);
                 }
                 exchange.getResponseHeaders().set("Location", "/");
                 exchange.sendResponseHeaders(303, -1);
@@ -466,6 +610,32 @@ public class App {
                 return;
             }
 
+            if (path.equals("/term") && method.equals("GET")) {
+                int id = Integer.parseInt(exchange.getRequestURI().getQuery().substring(3));
+                List<Term> terms = selectTerms();
+                Term term = null;
+                for (Term candidate : terms) {
+                    if (candidate.getId() == id) term = candidate;
+                }
+                if (term == null) {
+                    exchange.sendResponseHeaders(404, -1);
+                    exchange.close();
+                    return;
+                }
+                String html = "<!doctype html><html lang='ja'><head><meta charset='UTF-8'>";
+                html += "<meta name='viewport' content='width=device-width,initial-scale=1'>";
+                html += "<title>" + escapeHtml(term.getWord()) + " - セキュマネ用語帳</title>" + pageStyles();
+                html += "</head><body><main class='page'><header class='hero'><h1>関連用語</h1>";
+                html += "<p><a class='action edit' href='/'>← おすすめ学習順へ戻る</a></p></header>";
+                html += "<ul class='term-list'>" + termToHtml(term, terms) + "</ul></main></body></html>";
+                byte[] response = html.getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().set("Content-Type", "text/html; charset=UTF-8");
+                exchange.sendResponseHeaders(200, response.length);
+                exchange.getResponseBody().write(response);
+                exchange.getResponseBody().close();
+                return;
+            }
+
             if (path.equals("/edit") && method.equals("GET")) {
                 int id = Integer.parseInt(exchange.getRequestURI().getQuery().substring(3));
                 Term term = findTerm(id);
@@ -489,6 +659,8 @@ public class App {
                     html += "<option value='" + level + "'" + (term.getImportance() == level ? " selected" : "") + ">" + "★".repeat(level) + "</option>";
                 }
                 html += "</select></div>";
+                html += "<div class='field'><label>学習順</label><input type='number' min='1' name='learningOrder' value='" + term.getLearningOrder() + "' required></div>";
+                html += "<div class='field wide'><label>関連用語</label><input name='relatedTerms' value='" + escapeHtml(term.getRelatedTerms()) + "' placeholder='カンマ区切りで入力'></div>";
                 html += "<button>変更を保存する</button><a class='action edit' href='/'>キャンセル</a>";
                 html += "</form></section></main></body></html>";
                 byte[] response = html.getBytes(StandardCharsets.UTF_8);
@@ -511,24 +683,16 @@ public class App {
                 html += "<div class='field wide'><label>試験のポイント</label><input name='examPoint' placeholder='覚えておきたいポイント' required></div>";
                 html += "<div class='field'><label>カテゴリ</label><select name='category'>" + categoryOptions("情報セキュリティ") + "</select></div>";
                 html += "<div class='field'><label>重要度</label><select name='importance'><option value='3'>★★★</option><option value='2' selected>★★</option><option value='1'>★</option></select></div>";
+                html += "<div class='field'><label>学習順</label><input type='number' min='1' name='learningOrder' value='999' required></div>";
+                html += "<div class='field wide'><label>関連用語</label><input name='relatedTerms' placeholder='例：暗号化, ハッシュ関数'></div>";
                 html += "<button>用語を追加する</button></form></section>";
 
                 List<Term> terms = selectTerms();
-                html += "<section><h2 class='section-title'>復習する用語</h2>";
-                String[] categories = {"情報セキュリティ", "セキュリティ管理", "ネットワーク・システム", "法務・コンプライアンス"};
-                for (String category : categories) {
-                    boolean hasTerms = false;
-                    for (Term term : terms) {
-                        if (!term.isMemorized() && category.equals(term.getCategory())) hasTerms = true;
-                    }
-                    if (!hasTerms) continue;
-                    html += "<div class='category-section'><h3 class='category-title'>" + category + "</h3><ul class='term-list'>";
-                    for (Term term : terms) {
-                        if (!term.isMemorized() && category.equals(term.getCategory())) html += termToHtml(term);
-                    }
-                    html += "</ul></div>";
+                html += "<section><h2 class='section-title'>おすすめ学習順</h2><ul class='term-list'>";
+                for (Term term : terms) {
+                    if (!term.isMemorized()) html += termToHtml(term, terms);
                 }
-                html += "</section>";
+                html += "</ul></section>";
 
                 int memorizedCount = 0;
                 for (Term term : terms) {
@@ -540,7 +704,7 @@ public class App {
                 html += "<details class='memorized'><summary>覚えた用語（" + memorizedCount + "件）</summary><ul class='term-list'>";
                 for (Term term : terms) {
                     if (term.isMemorized()) {
-                        html += termToHtml(term);
+                        html += termToHtml(term, terms);
                     }
                 }
                 html += "</ul></details></main></body></html>";
