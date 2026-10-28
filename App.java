@@ -486,20 +486,17 @@ public class App {
         return formValue(query, name);
     }
 
-    static boolean matchesFilter(Term term, String keyword, String category,
-                                 String importance, String status) {
+    static boolean matchesFilter(Term term, String keyword, String category, String status) {
         String normalizedKeyword = keyword.toLowerCase();
         boolean matchesKeyword = normalizedKeyword.isEmpty()
                 || term.getWord().toLowerCase().contains(normalizedKeyword)
                 || term.getMeaning().toLowerCase().contains(normalizedKeyword)
                 || term.getExamPoint().toLowerCase().contains(normalizedKeyword);
         boolean matchesCategory = category.isEmpty() || term.getCategory().equals(category);
-        boolean matchesImportance = importance.isEmpty()
-                || term.getImportance() == Integer.parseInt(importance);
-        boolean matchesStatus = status.isEmpty()
+        boolean matchesStatus = status.equals("all")
                 || (status.equals("memorized") && term.isMemorized())
                 || (status.equals("learning") && !term.isMemorized());
-        return matchesKeyword && matchesCategory && matchesImportance && matchesStatus;
+        return matchesKeyword && matchesCategory && matchesStatus;
     }
 
     static String selected(String value, String current) {
@@ -551,7 +548,7 @@ public class App {
     static String termToHtml(Term term, List<Term> terms) {
         String html = "<li class='term-card'><div class='term-meta'><span class='study-number'>学習 " + term.getLearningOrder() + "</span>";
         html += "<span class='category'>" + escapeHtml(term.getCategory()) + "</span>";
-        html += "<span class='importance'>重要度 " + "★".repeat(term.getImportance()) + "</span></div>";
+        html += "</div>";
         html += "<div class='term-title'><strong>" + escapeHtml(term.getWord()) + "とは？</strong>";
         html += term.isMemorized() ? "<span class='badge'>覚えた</span>" : "<span class='badge learning'>学習中</span>";
         html += "</div><details class='answer'><summary>答えを見る</summary><div class='answer-body'><p>";
@@ -582,8 +579,9 @@ public class App {
                 + ".hero p{margin:6px 0 0;color:#65738b}"
                 + ".panel{padding:24px;margin-bottom:34px;background:#fff;border:1px solid #dfe7f2;border-radius:18px;box-shadow:0 10px 30px rgba(38,73,120,.08)}"
                 + ".progress-summary{display:flex;justify-content:space-between;gap:12px;margin-bottom:8px;font-weight:700}.progress-track{height:12px;overflow:hidden;background:#dfe7f2;border-radius:999px}.progress-bar{height:100%;background:#36a269;border-radius:999px}"
-                + ".filter-form{display:grid;grid-template-columns:2fr repeat(3,1fr) auto;gap:10px;align-items:end}.filter-form button{grid-column:auto}.filter-reset{padding:12px 14px;text-align:center;color:#42526b;text-decoration:none;background:#edf2f7;border-radius:10px;font-weight:700}"
+                + ".filter-form{display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:10px;align-items:end}.filter-form button{grid-column:auto}.filter-reset{padding:12px 14px;text-align:center;color:#42526b;text-decoration:none;background:#edf2f7;border-radius:10px;font-weight:700}"
                 + ".result-count{margin:-18px 0 20px;color:#65738b;font-weight:700}.empty-result{padding:24px;text-align:center;background:#fff;border:1px solid #dfe7f2;border-radius:16px;color:#65738b}"
+                + ".add-panel{margin-top:34px}.add-panel>summary{cursor:pointer;font-size:18px;font-weight:700;color:#173b72}.add-panel .form-grid{margin-top:20px}"
                 + ".form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}"
                 + ".field{display:flex;flex-direction:column;gap:6px}.field.wide{grid-column:1/-1}"
                 + "label{font-size:14px;font-weight:700;color:#42526b}"
@@ -595,7 +593,7 @@ public class App {
                 + ".section-title{margin:0 0 14px;font-size:22px;color:#173b72}"
                 + ".term-list{display:grid;gap:16px;margin:0 0 34px;padding:0;list-style:none}"
                 + ".term-card{padding:20px;background:#fff;border:1px solid #dfe7f2;border-radius:16px;box-shadow:0 5px 18px rgba(38,73,120,.06)}"
-                + ".term-meta{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:12px;font-weight:700}.study-number{padding:3px 8px;border-radius:999px;background:#173b72;color:#fff}.category{color:#315f9d}.importance{margin-left:auto;color:#d27a00}"
+                + ".term-meta{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:12px;font-weight:700}.study-number{padding:3px 8px;border-radius:999px;background:#173b72;color:#fff}.category{color:#315f9d}"
                 + ".category-section{margin:0 0 36px}.category-title{padding-bottom:8px;border-bottom:2px solid #d9e5f5;color:#173b72}"
                 + ".term-title{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:18px}"
                 + ".badge{flex:none;padding:3px 9px;border-radius:999px;background:#def6e8;color:#187443;font-size:12px;font-weight:700}"
@@ -730,11 +728,7 @@ public class App {
                 html += "<div class='field'><label>意味</label><input name='meaning' value='" + escapeHtml(term.getMeaning()) + "' required></div>";
                 html += "<div class='field wide'><label>試験のポイント</label><input name='examPoint' value='" + escapeHtml(term.getExamPoint()) + "' required></div>";
                 html += "<div class='field'><label>カテゴリ</label><select name='category'>" + categoryOptions(term.getCategory()) + "</select></div>";
-                html += "<div class='field'><label>重要度</label><select name='importance'>";
-                for (int level = 3; level >= 1; level--) {
-                    html += "<option value='" + level + "'" + (term.getImportance() == level ? " selected" : "") + ">" + "★".repeat(level) + "</option>";
-                }
-                html += "</select></div>";
+                html += "<input type='hidden' name='importance' value='" + term.getImportance() + "'>";
                 html += "<div class='field'><label>学習順</label><input type='number' min='1' name='learningOrder' value='" + term.getLearningOrder() + "' required></div>";
                 html += "<div class='field wide'><label>関連用語</label><input name='relatedTerms' value='" + escapeHtml(term.getRelatedTerms()) + "' placeholder='カンマ区切りで入力'></div>";
                 html += "<button>変更を保存する</button><a class='action edit' href='/'>キャンセル</a>";
@@ -751,23 +745,12 @@ public class App {
                 String query = exchange.getRequestURI().getRawQuery();
                 String keyword = queryValue(query, "keyword").trim();
                 String filterCategory = queryValue(query, "filterCategory");
-                String filterImportance = queryValue(query, "filterImportance");
                 String filterStatus = queryValue(query, "filterStatus");
+                if (filterStatus.isEmpty()) filterStatus = "learning";
                 String html = "<!doctype html><html lang='ja'><head><meta charset='UTF-8'>";
                 html += "<meta name='viewport' content='width=device-width,initial-scale=1'>";
                 html += "<title>セキュマネ用語帳</title>" + pageStyles() + "</head><body><main class='page'>";
                 html += "<header class='hero'><h1>セキュマネ用語帳</h1></header>";
-                html += "<section class='panel'><h2 class='section-title'>新しい用語を追加</h2>";
-                html += "<form class='form-grid' method='post' action='/add'>";
-                html += "<div class='field'><label>用語</label><input name='word' placeholder='例：機密性' required></div>";
-                html += "<div class='field'><label>意味</label><input name='meaning' placeholder='用語の意味を入力' required></div>";
-                html += "<div class='field wide'><label>試験のポイント</label><input name='examPoint' placeholder='覚えておきたいポイント' required></div>";
-                html += "<div class='field'><label>カテゴリ</label><select name='category'>" + categoryOptions("情報セキュリティ") + "</select></div>";
-                html += "<div class='field'><label>重要度</label><select name='importance'><option value='3'>★★★</option><option value='2' selected>★★</option><option value='1'>★</option></select></div>";
-                html += "<div class='field'><label>学習順</label><input type='number' min='1' name='learningOrder' value='" + nextLearningOrder() + "' required></div>";
-                html += "<div class='field wide'><label>関連用語</label><input name='relatedTerms' placeholder='例：暗号化, ハッシュ関数'></div>";
-                html += "<button>用語を追加する</button></form></section>";
-
                 List<Term> terms = selectTerms();
                 int memorizedCount = 0;
                 for (Term term : terms) {
@@ -787,13 +770,12 @@ public class App {
                     html += "<option value='" + category + "'" + selected(category, filterCategory) + ">" + category + "</option>";
                 }
                 html += "</select></div>";
-                html += "<div class='field'><label>重要度</label><select name='filterImportance'><option value=''>すべて</option><option value='3'" + selected("3", filterImportance) + ">★★★</option><option value='2'" + selected("2", filterImportance) + ">★★</option><option value='1'" + selected("1", filterImportance) + ">★</option></select></div>";
-                html += "<div class='field'><label>学習状況</label><select name='filterStatus'><option value=''>すべて</option><option value='learning'" + selected("learning", filterStatus) + ">学習中</option><option value='memorized'" + selected("memorized", filterStatus) + ">覚えた</option></select></div>";
+                html += "<div class='field'><label>学習状況</label><select name='filterStatus'><option value='learning'" + selected("learning", filterStatus) + ">学習中</option><option value='memorized'" + selected("memorized", filterStatus) + ">覚えた</option><option value='all'" + selected("all", filterStatus) + ">すべて</option></select></div>";
                 html += "<button>検索する</button><a class='filter-reset' href='/'>リセット</a></form></section>";
 
                 List<Term> filteredTerms = new ArrayList<>();
                 for (Term term : terms) {
-                    if (matchesFilter(term, keyword, filterCategory, filterImportance, filterStatus)) {
+                    if (matchesFilter(term, keyword, filterCategory, filterStatus)) {
                         filteredTerms.add(term);
                     }
                 }
@@ -805,7 +787,17 @@ public class App {
                     for (Term term : filteredTerms) html += termToHtml(term, terms);
                     html += "</ul>";
                 }
-                html += "</section></main></body></html>";
+                html += "</section>";
+                html += "<details class='panel add-panel'><summary>新しい用語を追加</summary>";
+                html += "<form class='form-grid' method='post' action='/add'>";
+                html += "<div class='field'><label>用語</label><input name='word' placeholder='例：機密性' required></div>";
+                html += "<div class='field'><label>意味</label><input name='meaning' placeholder='用語の意味を入力' required></div>";
+                html += "<div class='field wide'><label>試験のポイント</label><input name='examPoint' placeholder='覚えておきたいポイント' required></div>";
+                html += "<div class='field'><label>カテゴリ</label><select name='category'>" + categoryOptions("情報セキュリティ") + "</select></div>";
+                html += "<input type='hidden' name='importance' value='2'>";
+                html += "<div class='field'><label>学習順</label><input type='number' min='1' name='learningOrder' value='" + nextLearningOrder() + "' required></div>";
+                html += "<div class='field wide'><label>関連用語</label><input name='relatedTerms' placeholder='例：暗号化, ハッシュ関数'></div>";
+                html += "<button>用語を追加する</button></form></details></main></body></html>";
                 byte[] response = html.getBytes(StandardCharsets.UTF_8);
                 exchange.getResponseHeaders().set("Content-Type", "text/html; charset=UTF-8");
                 exchange.sendResponseHeaders(200, response.length);
